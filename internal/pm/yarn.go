@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"gonv/internal/semver"
 )
 
 const (
@@ -37,18 +39,42 @@ func resolveLatestYarn() (string, error) {
 	return e.Version, nil
 }
 
+// resolveYarnVersion turns a partial query like "1" or "1.22" into an
+// exact yarn version. Empty input means "use latest".
+func resolveYarnVersion(query string) (string, error) {
+	if query == "" {
+		return resolveLatestYarn()
+	}
+	q, err := semver.ParseQuery(query)
+	if err != nil {
+		return "", err
+	}
+	if q.IsExact() {
+		base := fmt.Sprintf("%d.%d.%d", q.Major, q.Minor, q.Patch)
+		if q.Pre != "" {
+			base += "-" + q.Pre
+		}
+		return base, nil
+	}
+	versions, err := fetchNpmVersions("yarn")
+	if err != nil {
+		return "", err
+	}
+	return semver.ResolveLatest(versions, query)
+}
+
 // installYarn pulls the yarn tarball from the npm registry, extracts it
 // alongside node.exe, and writes a yarn.cmd wrapper that invokes the
 // bundled yarn.js with the Node binary from the same directory.
 func installYarn(nodeDir, version string) error {
-	if version == "" {
-		v, err := resolveLatestYarn()
-		if err != nil {
-			return err
-		}
-		version = v
+	resolved, err := resolveYarnVersion(version)
+	if err != nil {
+		return err
 	}
-	version = strings.TrimPrefix(version, "v")
+	if resolved != version {
+		fmt.Printf("Resolved yarn %s → %s\n", version, resolved)
+	}
+	version = strings.TrimPrefix(resolved, "v")
 
 	url := fmt.Sprintf(yarnTarballFmt, version)
 	fmt.Printf("Downloading %s\n", url)

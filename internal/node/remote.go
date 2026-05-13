@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"gonv/internal/semver"
 )
 
 const remoteIndexURL = "https://nodejs.org/dist/index.json"
@@ -54,4 +56,31 @@ func FetchRemoteReleases() ([]RemoteRelease, error) {
 		out = append(out, rr)
 	}
 	return out, nil
+}
+
+// ResolveVersion turns a partial query like "22", "22.10", or "v22" into
+// the latest matching released Node version (e.g. "v22.10.0"). A
+// fully-specified version is returned as-is without contacting the
+// network.
+func ResolveVersion(query string) (string, error) {
+	q, err := semver.ParseQuery(query)
+	if err != nil {
+		return "", err
+	}
+	if q.IsExact() {
+		base := fmt.Sprintf("v%d.%d.%d", q.Major, q.Minor, q.Patch)
+		if q.Pre != "" {
+			base += "-" + q.Pre
+		}
+		return base, nil
+	}
+	releases, err := FetchRemoteReleases()
+	if err != nil {
+		return "", err
+	}
+	versions := make([]string, 0, len(releases))
+	for _, r := range releases {
+		versions = append(versions, r.Version)
+	}
+	return semver.ResolveLatest(versions, query)
 }

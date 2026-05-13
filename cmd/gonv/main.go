@@ -48,7 +48,15 @@ func installCmd() *cobra.Command {
 		Short: "Download and install a Node.js version, optionally under an alias",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			version := config.NormalizeVersion(args[0])
+			raw := args[0]
+			resolved, err := node.ResolveVersion(raw)
+			if err != nil {
+				return err
+			}
+			version := config.NormalizeVersion(resolved)
+			if config.NormalizeVersion(raw) != version {
+				fmt.Printf("Resolved %s → %s\n", raw, version)
+			}
 			name := alias
 			if name == "" {
 				name = version
@@ -57,9 +65,9 @@ func installCmd() *cobra.Command {
 				return err
 			}
 
-			db, err := gonvdb.Open()
-			if err != nil {
-				return err
+			db, err2 := gonvdb.Open()
+			if err2 != nil {
+				return err2
 			}
 			defer db.Close()
 

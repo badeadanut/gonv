@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"gonv/internal/semver"
 )
 
 const (
@@ -50,8 +52,41 @@ func fetchPnpmRelease(version string) (*ghRelease, error) {
 	return &r, nil
 }
 
+// resolvePnpmVersion turns a partial query like "8" or "8.15" into an
+// exact pnpm version by consulting the npm registry. Empty input means
+// "use latest" and is passed through unchanged (the GitHub releases API
+// handles that case).
+func resolvePnpmVersion(query string) (string, error) {
+	if query == "" {
+		return "", nil
+	}
+	q, err := semver.ParseQuery(query)
+	if err != nil {
+		return "", err
+	}
+	if q.IsExact() {
+		base := fmt.Sprintf("%d.%d.%d", q.Major, q.Minor, q.Patch)
+		if q.Pre != "" {
+			base += "-" + q.Pre
+		}
+		return base, nil
+	}
+	versions, err := fetchNpmVersions("pnpm")
+	if err != nil {
+		return "", err
+	}
+	return semver.ResolveLatest(versions, query)
+}
+
 func installPnpm(nodeDir, version string) error {
-	rel, err := fetchPnpmRelease(version)
+	resolved, err := resolvePnpmVersion(version)
+	if err != nil {
+		return err
+	}
+	if resolved != "" && resolved != version {
+		fmt.Printf("Resolved pnpm %s → %s\n", version, resolved)
+	}
+	rel, err := fetchPnpmRelease(resolved)
 	if err != nil {
 		return err
 	}
