@@ -16,20 +16,16 @@ func downloadURL(version string) string {
 	return fmt.Sprintf("https://nodejs.org/dist/%s/node-%s-win-x64.zip", version, version)
 }
 
-// Install downloads and extracts the requested Node version into the gonv
-// root. It is idempotent: if `node.exe` already exists at the target path,
-// it returns immediately.
-func Install(version string) (string, error) {
+// Install downloads Node `version` and extracts it into targetDir.
+// It's idempotent: if targetDir already contains node.exe, the function
+// returns immediately.
+func Install(version, targetDir string) error {
 	version = config.NormalizeVersion(version)
-	target, err := config.NodeVersionDir(version)
-	if err != nil {
-		return "", err
+	if _, err := os.Stat(filepath.Join(targetDir, "node.exe")); err == nil {
+		return nil
 	}
-	if _, err := os.Stat(filepath.Join(target, "node.exe")); err == nil {
-		return target, nil
-	}
-	if err := os.MkdirAll(target, 0o755); err != nil {
-		return "", err
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return err
 	}
 
 	url := downloadURL(version)
@@ -37,7 +33,7 @@ func Install(version string) (string, error) {
 
 	tmp, err := os.CreateTemp("", "gonv-node-*.zip")
 	if err != nil {
-		return "", err
+		return err
 	}
 	tmpPath := tmp.Name()
 	defer os.Remove(tmpPath)
@@ -45,29 +41,27 @@ func Install(version string) (string, error) {
 	resp, err := http.Get(url)
 	if err != nil {
 		tmp.Close()
-		return "", fmt.Errorf("download: %w", err)
+		return fmt.Errorf("download: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		tmp.Close()
-		return "", fmt.Errorf("download: HTTP %d (is %s a real release?)", resp.StatusCode, version)
+		return fmt.Errorf("download: HTTP %d (is %s a real release?)", resp.StatusCode, version)
 	}
 	if _, err := io.Copy(tmp, resp.Body); err != nil {
 		tmp.Close()
-		return "", err
+		return err
 	}
 	if err := tmp.Close(); err != nil {
-		return "", err
+		return err
 	}
 
-	if err := extractZip(tmpPath, target); err != nil {
-		return "", fmt.Errorf("extract: %w", err)
+	if err := extractZip(tmpPath, targetDir); err != nil {
+		return fmt.Errorf("extract: %w", err)
 	}
-	return target, nil
+	return nil
 }
 
-// extractZip flattens the single top-level directory the official Node
-// archive ships with (e.g. "node-v20.10.0-win-x64/...").
 func extractZip(zipPath, dest string) error {
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {

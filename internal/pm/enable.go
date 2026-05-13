@@ -7,11 +7,10 @@ import (
 	"gonv/internal/config"
 )
 
-// Enable downloads a package manager's binaries and installs them into the
-// directory of the given Node version. The gonv shims pick them up
-// automatically because they live alongside node.exe.
-func Enable(nodeVersion, name, version string) error {
-	nodeDir, err := config.NodeVersionDir(nodeVersion)
+// Enable downloads a package manager's binaries and installs them into
+// the install directory identified by installName.
+func Enable(installName, name, version string) error {
+	nodeDir, err := config.InstallDir(installName)
 	if err != nil {
 		return err
 	}

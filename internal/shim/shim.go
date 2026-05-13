@@ -15,8 +15,8 @@ import (
 
 // Run is the entry point for every shim binary. The shim discovers which
 // command was requested from its own filename (node.exe → "node"), looks
-// up the Node version mapped to the current working directory, and execs
-// the matching binary from that Node distribution.
+// up the install mapped to the current working directory, and execs the
+// matching binary from that install's directory.
 func Run() int {
 	exe, err := os.Executable()
 	if err != nil {
@@ -37,13 +37,13 @@ func Run() int {
 		fmt.Fprintln(os.Stderr, "gonv-shim: cannot get cwd:", err)
 		return 1
 	}
-	version, err := node.ResolveForCWD(db, cwd)
+	installName, err := node.ResolveForCWD(db, cwd)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "gonv-shim:", err)
 		return 1
 	}
 
-	nodeDir, err := config.NodeVersionDir(version)
+	nodeDir, err := config.InstallDir(installName)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "gonv-shim:", err)
 		return 1
@@ -73,7 +73,7 @@ func Run() int {
 	return 0
 }
 
-// resolveTarget locates the requested binary inside the Node distribution.
+// resolveTarget locates the requested binary inside the install directory.
 // .exe files run directly; .cmd / .bat must be run through cmd.exe because
 // CreateProcess (used by Go's os/exec) cannot launch them on its own.
 func resolveTarget(nodeDir, name string) (string, []string, error) {

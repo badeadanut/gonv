@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,12 +31,17 @@ func DBPath() (string, error) {
 	return filepath.Join(r, DBFileName), nil
 }
 
-func NodeVersionDir(version string) (string, error) {
+// InstallDir returns the directory where the install identified by name
+// lives (node.exe and any enabled package managers sit here).
+func InstallDir(name string) (string, error) {
+	if err := ValidateInstallName(name); err != nil {
+		return "", err
+	}
 	r, err := Root()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(r, VersionsDir, NodeSubdir, NormalizeVersion(version)), nil
+	return filepath.Join(r, VersionsDir, NodeSubdir, name), nil
 }
 
 func ShimsPath() (string, error) {
@@ -46,6 +52,7 @@ func ShimsPath() (string, error) {
 	return filepath.Join(r, ShimsDir), nil
 }
 
+// NormalizeVersion ensures a Node version string carries the leading 'v'.
 func NormalizeVersion(v string) string {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -55,6 +62,21 @@ func NormalizeVersion(v string) string {
 		return "v" + v
 	}
 	return "v" + v[1:]
+}
+
+// ValidateInstallName rejects names that would escape the installs root
+// when joined as a path component.
+func ValidateInstallName(n string) error {
+	if n == "" {
+		return fmt.Errorf("install name cannot be empty")
+	}
+	if strings.ContainsAny(n, `\/`) {
+		return fmt.Errorf("install name %q must not contain path separators", n)
+	}
+	if n == "." || n == ".." {
+		return fmt.Errorf("install name %q is reserved", n)
+	}
+	return nil
 }
 
 func EnsureRoot() (string, error) {
