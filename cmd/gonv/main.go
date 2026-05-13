@@ -26,7 +26,7 @@ func main() {
 		SilenceUsage:  true,
 		SilenceErrors: false,
 	}
-	root.AddCommand(installCmd(), useCmd(), enableCmd(), listCmd(), currentCmd(), shimsCmd())
+	root.AddCommand(installCmd(), useCmd(), enableCmd(), listCmd(), listRemoteCmd(), currentCmd(), shimsCmd())
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -161,6 +161,34 @@ func listCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func listRemoteCmd() *cobra.Command {
+	var ltsOnly bool
+	cmd := &cobra.Command{
+		Use:     "list-remote",
+		Aliases: []string{"ls-remote"},
+		Short:   "List Node.js versions available for download from nodejs.org",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			releases, err := node.FetchRemoteReleases()
+			if err != nil {
+				return err
+			}
+			for _, r := range releases {
+				if ltsOnly && r.LTS == "" {
+					continue
+				}
+				if r.LTS != "" {
+					fmt.Printf("%-14s %s  (LTS: %s)\n", r.Version, r.Date, r.LTS)
+				} else {
+					fmt.Printf("%-14s %s\n", r.Version, r.Date)
+				}
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&ltsOnly, "lts", false, "show only LTS releases")
+	return cmd
 }
 
 func currentCmd() *cobra.Command {
