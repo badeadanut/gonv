@@ -1,6 +1,7 @@
 package pm
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -44,10 +45,25 @@ func installPnpm(nodeDir, version string) error {
 	}
 	version = strings.TrimPrefix(version, "v")
 
-	url := fmt.Sprintf("https://github.com/pnpm/pnpm/releases/download/v%s/pnpm-win-x64.exe", version)
+	url := fmt.Sprintf("https://github.com/pnpm/pnpm/releases/download/v%s/pnpm-win32-x64.zip", version)
 	fmt.Printf("Downloading %s\n", url)
-	if err := downloadFile(url, filepath.Join(nodeDir, "pnpm.exe"), 0o755); err != nil {
+
+	tmp, err := os.CreateTemp("", "gonv-pnpm-*.zip")
+	if err != nil {
 		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := downloadInto(url, tmp); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+
+	if err := extractPnpmExe(tmpPath, filepath.Join(nodeDir, "pnpm.exe")); err != nil {
+		return fmt.Errorf("extract pnpm: %w", err)
 	}
 
 	// pnpx wrapper — pnpm dropped the standalone pnpx binary; the
@@ -57,7 +73,7 @@ func installPnpm(nodeDir, version string) error {
 	return os.WriteFile(filepath.Join(nodeDir, "pnpx.cmd"), []byte(pnpxCmd), 0o644)
 }
 
-func downloadFile(url, dst string, mode os.FileMode) error {
+func downloadInto(url string, w io.Writer) error {
 	resp, err := http.Get(url)
 	if err != nil {
 		return fmt.Errorf("download %s: %w", url, err)
@@ -66,11 +82,37 @@ func downloadFile(url, dst string, mode os.FileMode) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download %s: HTTP %d", url, resp.StatusCode)
 	}
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	_, err = io.Copy(w, resp.Body)
+	return err
+}
+
+// extractPnpmExe pulls pnpm.exe out of the release zip regardless of
+// where it sits in the archive layout.
+func extractPnpmExe(zipPath, dst string) error {
+	r, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
-	_, err = io.Copy(out, resp.Body)
-	return err
+	defer r.Close()
+	for _, f := range r.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		if !strings.EqualFold(filepath.Base(f.Name), "pnpm.exe") {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return err
+		}
+		defer rc.Close()
+		out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
+		if err != nil {
+			return err
+		}
+		defer out.Close()
+		_, err = io.Copy(out, rc)
+		return err
+	}
+	return fmt.Errorf("pnpm.exe not found inside %s", zipPath)
 }
